@@ -12,13 +12,16 @@ public:
 
 private:
     GLFWwindow* window;
-
+    unsigned int textureID;
     unsigned int VBO, EBO, VAO, shaderProgram;
+	int currentState = 0;
     void init();
     void mainLoop();
     void cleanup();
 
+	void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
     void initTriangle();
     void initShaders();
+	void initTexture();
     std::string loadShaderSource(const std::string& path);
 };
