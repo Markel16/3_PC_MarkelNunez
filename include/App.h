@@ -23,5 +23,6 @@ private:
     void initTriangle();
     void initShaders();
 	void initTexture();
+	void InitColorTriangle();
     std::string loadShaderSource(const std::string& path);
 };
