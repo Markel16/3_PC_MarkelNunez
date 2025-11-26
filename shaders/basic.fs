@@ -16,10 +16,13 @@ uniform float uAngle;  // para la textura rotada
 void main()
 {
     if (uMode == 0) {
-        //Cuadrado con 2 texturas + color
+        //Cuadrado con 2 texturas mezcladas + color
         vec4 c1 = texture(uTex1, TexCoord);
         vec4 c2 = texture(uTex2, TexCoord);
-        vec4 base = mix(c1, c2, 0.5);
+
+        // mezcla 50% de cada una 
+        vec4 base = mix(c1, c2, 0.1);
+
         FragColor = base * uTintColor;
     }
     else if (uMode == 1) {
@@ -37,18 +40,18 @@ void main()
     }
     else if (uMode == 2) {
         //Círculo de color plano (en base a vUV)
-        vec2 p = vUV - vec2(0.5);// centro (0.5, 0.5)
+        vec2 p = vUV - vec2(0.5);   // centro (0.5, 0.5)
         float r = length(p);
         if (r > 0.5)
-            discard;// fuera del círculo = transparente
+            discard; // fuera del círculo = transparente
         FragColor = uTintColor;// color sólido
     }
     else if (uMode == 3) {
-        // ── Triángulo con 3 colores
+        //Triángulo con 3 colores
         FragColor = vec4(ourColor, 1.0);
     }
     else {
-        // Modo debug
-        FragColor = vec4(1.0, 0.0, 1.0, 1.0); // magenta
+        
+        FragColor = vec4(1.0, 0.0, 1.0, 1.0); 
     }
 }

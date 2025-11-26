@@ -1,20 +1,30 @@
 #include "App.h"
 #define STB_IMAGE_IMPLEMENTATION 1
 #include "stb_image.h"
+
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <cmath>
 #include <array>
 
-//ESTADO GLOBAL
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+
+
+//  ESTADO GLOBAL (solo para este archivo)
+
 
 // Texturas
 static GLuint texture1 = 0;
 static GLuint texture2 = 0;
 
+// VAO/VBO del triángulo de colores (abajo derecha)
+static GLuint triVAO = 0;
+static GLuint triVBO = 0;
+
 // Quad: POS (x,y,z) + UV (u,v)
-static std::array<float, 20> baseVerts = {
+static std::array<float, 20> quadVerts = {
     //   x,      y,    z,    u,    v
     -0.5f,  0.5f, 0.0f,  0.0f, 1.0f,  // 0: top-left
     -0.5f, -0.5f, 0.0f,  0.0f, 0.0f,  // 1: bottom-left
@@ -22,13 +32,59 @@ static std::array<float, 20> baseVerts = {
      0.5f,  0.5f, 0.0f,  1.0f, 1.0f   // 3: top-right
 };
 
-App::App() { init(); }
-App::~App() { cleanup(); }
+// Triángulo de 3 colores (abajo derecha)
+static void InitColorTriangle()
+{
+    float triVerts[] = {
+        //   x      y     z      r     g     b
+         0.2f, -0.2f, 0.0f,   1.0f, 0.0f, 0.0f, // rojo
+         0.8f, -0.2f, 0.0f,   0.0f, 1.0f, 0.0f, // verde
+         0.5f, -0.8f, 0.0f,   0.0f, 0.0f, 1.0f  // azul
+    };
 
-//LECTOR DE SHADERS (quita BOM UTF-8)
-std::string App::loadShaderSource(const std::string& path) {
+    glGenVertexArrays(1, &triVAO);
+    glBindVertexArray(triVAO);
+
+    glGenBuffers(1, &triVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, triVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(triVerts), triVerts, GL_STATIC_DRAW);
+
+    // posición -> location 0
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
+        6 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // color -> location 1
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE,
+        6 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+}
+
+
+// CONSTRUCTOR / DESTRUCTOR
+
+
+App::App()
+{
+    init();
+}
+
+App::~App()
+{
+    cleanup();
+}
+
+
+//LECTOR DE SHADERS 
+
+
+std::string App::loadShaderSource(const std::string& path)
+{
     std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
+    if (!file.is_open()) 
+    {
         std::cerr << "[ERROR] No se pudo abrir el shader: " << path << "\n";
         return "";
     }
@@ -48,32 +104,51 @@ std::string App::loadShaderSource(const std::string& path) {
     return source;
 }
 
-//CALLBACK TECLADO
-void App::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
+
+//  CALLBACK TECLADO
+
+
+void App::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
         glfwSetWindowShouldClose(window, true);
     }
 }
 
 
-void App::init() {
-    if (!glfwInit()) { std::cerr << "[ERROR] glfwInit\n"; std::exit(-1); }
+//INIT: se ejecuta una vez
+
+
+void App::init()
+{
+    if (!glfwInit()) {
+        std::cerr << "[ERROR] glfwInit\n";
+        std::exit(-1);
+    }
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     window = glfwCreateWindow(800, 800, "Markel Núñez", nullptr, nullptr);
-    if (!window) { std::cerr << "[ERROR] creando ventana\n"; glfwTerminate(); std::exit(-1); }
+    if (!window) {
+        std::cerr << "[ERROR] creando ventana\n";
+        glfwTerminate();
+        std::exit(-1);
+    }
 
     glfwMakeContextCurrent(window);
 
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
-        std::cerr << "[ERROR] gladLoadGLLoader\n"; std::exit(-1);
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
+    {
+        std::cerr << "[ERROR] gladLoadGLLoader\n";
+        std::exit(-1);
     }
 
+    // callback de teclado
     glfwSetWindowUserPointer(window, this);
-    glfwSetKeyCallback(window, [](GLFWwindow* win, int key, int sc, int act, int mods) {
+    glfwSetKeyCallback(window, [](GLFWwindow* win, int key, int sc, int act, int mods) 
+        {
         if (auto* self = static_cast<App*>(glfwGetWindowUserPointer(win))) {
             self->KeyCallback(win, key, sc, act, mods);
         }
@@ -87,17 +162,22 @@ void App::init() {
     glViewport(0, 0, 800, 800);
 
     initShaders();
-    initTriangle();
+    initTriangle();      // quad para texturas / círculo
+    InitColorTriangle(); // triángulo RGB abajo derecha
     initTexture();
 }
 
 
-void App::initShaders() {
+//  SHADERS
+
+
+void App::initShaders()
+{
     std::string vertexCode = loadShaderSource("../shaders/basic.vs");
     std::string fragmentCode = loadShaderSource("../shaders/basic.fs");
 
     if (vertexCode.empty() || fragmentCode.empty()) {
-        std::cerr << "[ERROR] Shader vacío. Revisa rutas ../shaders/basic.vs y .fs\n";
+        std::cerr << "[ERROR] \n";
     }
 
     const char* vsrc = vertexCode.c_str();
@@ -108,20 +188,29 @@ void App::initShaders() {
     glCompileShader(vs);
     GLint ok = GL_FALSE; char log[1024];
     glGetShaderiv(vs, GL_COMPILE_STATUS, &ok);
-    if (!ok) { glGetShaderInfoLog(vs, 1024, nullptr, log); std::cerr << "[ERROR] Vertex Shader:\n" << log << "\n"; }
+    if (!ok) {
+        glGetShaderInfoLog(vs, 1024, nullptr, log);
+        std::cerr << "[ERROR] Vertex Shader:\n" << log << "\n";
+    }
 
     GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fs, 1, &fsrc, nullptr);
     glCompileShader(fs);
     glGetShaderiv(fs, GL_COMPILE_STATUS, &ok);
-    if (!ok) { glGetShaderInfoLog(fs, 1024, nullptr, log); std::cerr << "[ERROR] Fragment Shader:\n" << log << "\n"; }
+    if (!ok) {
+        glGetShaderInfoLog(fs, 1024, nullptr, log);
+        std::cerr << "[ERROR] Fragment Shader:\n" << log << "\n";
+    }
 
     shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vs);
     glAttachShader(shaderProgram, fs);
     glLinkProgram(shaderProgram);
     glGetProgramiv(shaderProgram, GL_LINK_STATUS, &ok);
-    if (!ok) { glGetProgramInfoLog(shaderProgram, 1024, nullptr, log); std::cerr << "[ERROR] Link Program:\n" << log << "\n"; }
+    if (!ok) {
+        glGetProgramInfoLog(shaderProgram, 1024, nullptr, log);
+        std::cerr << "[ERROR]\n" << log << "\n";
+    }
 
     glDeleteShader(vs);
     glDeleteShader(fs);
@@ -132,18 +221,22 @@ void App::initShaders() {
     glUseProgram(shaderProgram);
     GLint loc1 = glGetUniformLocation(shaderProgram, "uTex1");
     GLint loc2 = glGetUniformLocation(shaderProgram, "uTex2");
-    if (loc1 != -1) glUniform1i(loc1, 0);
-    if (loc2 != -1) glUniform1i(loc2, 1);
+    if (loc1 != -1) glUniform1i(loc1, 0); // GL_TEXTURE0
+    if (loc2 != -1) glUniform1i(loc2, 1); // GL_TEXTURE1
 }
 
-// ▬▬▬ TEXTURAS ▬▬▬
+
+//  TEXTURAS
+
+
 void App::initTexture()
 {
     int width, height, nrChannels;
     stbi_set_flip_vertically_on_load(true);
 
     // TEXTURA 1
-    unsigned char* data = stbi_load("../Assets/Texture1.jpg", &width, &height, &nrChannels, 0);
+    unsigned char* data = stbi_load("../Assets/Texture1.jpg",
+        &width, &height, &nrChannels, 0);
     if (!data) {
         std::cerr << "[ERROR] No se pudo cargar Texture1.jpg\n";
         return;
@@ -164,9 +257,10 @@ void App::initTexture()
     stbi_image_free(data);
 
     // TEXTURA 2
-    data = stbi_load("../Assets/Texture 2.jpg", &width, &height, &nrChannels, 0);
+    data = stbi_load("../Assets/Texture 2.jpg",
+        &width, &height, &nrChannels, 0);
     if (!data) {
-        std::cerr << "[ERROR] No se pudo cargar Texture2.jpg\n";
+        std::cerr << "[ERROR] No se pudo cargar Texture 2.jpg\n";
         return;
     }
 
@@ -186,7 +280,11 @@ void App::initTexture()
 }
 
 
-void App::initTriangle() {
+//  QUAD (VAO/VBO/EBO)
+
+
+void App::initTriangle()
+{
     unsigned int indices[] = { 0,1,2,  0,2,3 };
 
     glGenVertexArrays(1, &VAO);
@@ -194,36 +292,37 @@ void App::initTriangle() {
 
     glGenBuffers(1, &VBO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER,
-        sizeof(float) * baseVerts.size(),
-        baseVerts.data(),
-        GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(float) * quadVerts.size(),quadVerts.data(),GL_STATIC_DRAW);
 
     glGenBuffers(1, &EBO);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-        sizeof(indices), indices, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof(indices), indices, GL_STATIC_DRAW);
 
     // POSICIÓN -> location 0
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
-        5 * sizeof(float),
-        (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
     // UV -> location 2
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,
-        5 * sizeof(float),
-        (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(2);
 
     glBindVertexArray(0);
 }
 
-void App::run() { mainLoop(); }
+
+//  run() llama al bucle principal
 
 
-void App::mainLoop() {
+void App::run()
+{
+    mainLoop();
+}
 
+
+//  BUCLE PRINCIPAL
+
+
+void App::mainLoop()
+{
     const GLint uOffsetLoc = glGetUniformLocation(shaderProgram, "uOffset");
     const GLint uTintColorLoc = glGetUniformLocation(shaderProgram, "uTintColor");
     const GLint uModeLoc = glGetUniformLocation(shaderProgram, "uMode");
@@ -241,9 +340,10 @@ void App::mainLoop() {
         glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(shaderProgram);
-        glBindVertexArray(VAO);
 
         //Cuadrado 2 texturas + color ARRIBA IZQUIERDA
+        glBindVertexArray(VAO);
+
         if (uModeLoc != -1) glUniform1i(uModeLoc, 0);
         if (uOffsetLoc != -1) glUniform2f(uOffsetLoc, -0.5f, 0.5f);
         if (uTintColorLoc != -1) glUniform4f(uTintColorLoc, 1, 1, 1, 1);
@@ -255,7 +355,7 @@ void App::mainLoop() {
 
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
-        // Cuadrado textura rotada ARRIBA DERECHA
+        //2) Cuadrado textura rotada ARRIBA DERECHA
         if (uModeLoc != -1) glUniform1i(uModeLoc, 1);
         if (uOffsetLoc != -1) glUniform2f(uOffsetLoc, 0.5f, 0.5f);
         if (uAngleLoc != -1) glUniform1f(uAngleLoc, t);
@@ -266,25 +366,36 @@ void App::mainLoop() {
 
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
-        //Círculo azul ABAJO IZQUIERDA
+        //3) Círculo azul ABAJO IZQUIERDA
         if (uModeLoc != -1) glUniform1i(uModeLoc, 2);
         if (uOffsetLoc != -1) glUniform2f(uOffsetLoc, -0.5f, -0.5f);
         if (uTintColorLoc != -1) glUniform4f(uTintColorLoc, 0.0f, 0.6f, 1.0f, 1.0f);
 
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
+        //4) Triángulo RGB ABAJO DERECHA
+        if (uModeLoc != -1) glUniform1i(uModeLoc, 3);
+        if (uOffsetLoc != -1) glUniform2f(uOffsetLoc, 0.0f, 0.0f);
+
+        glBindVertexArray(triVAO);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+
         glfwSwapBuffers(window);
     }
 }
 
 
-void App::cleanup() {
-    if (VAO)       glDeleteVertexArrays(1, &VAO);
-    if (VBO)       glDeleteBuffers(1, &VBO);
-    if (EBO)       glDeleteBuffers(1, &EBO);
-    if (texture1)  glDeleteTextures(1, &texture1);
-    if (texture2)  glDeleteTextures(1, &texture2);
+
+void App::cleanup()
+{
+    if (VAO)           glDeleteVertexArrays(1, &VAO);
+    if (VBO)           glDeleteBuffers(1, &VBO);
+    if (EBO)           glDeleteBuffers(1, &EBO);
+    if (triVAO)        glDeleteVertexArrays(1, &triVAO);
+    if (triVBO)        glDeleteBuffers(1, &triVBO);
+    if (texture1)      glDeleteTextures(1, &texture1);
+    if (texture2)      glDeleteTextures(1, &texture2);
     if (shaderProgram) glDeleteProgram(shaderProgram);
-    if (window)    glfwDestroyWindow(window);
+    if (window)        glfwDestroyWindow(window);
     glfwTerminate();
 }
