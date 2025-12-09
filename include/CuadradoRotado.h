@@ -2,7 +2,18 @@
 #pragma once
 #include <glad/glad.h>
 
-void DrawCuadradoRotado(GLuint shaderProgram,
-    GLuint quadVAO,
-    GLuint texture,
-    float angleSeconds);
+class CuadradoRotado
+{
+	public:
+		CuadradoRotado() = default;
+
+		void Init(GLuint shaderProgram);
+		void Draw(float anlge);
+		void Cleanup();
+
+private:
+	GLuint shader = 0;
+	GLuint VAO = 0, VBO = 0, EBO = 0;
+	GLuint tex = 0;
+
+};

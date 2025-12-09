@@ -1,69 +1,10 @@
 #include "App.h"
-#define STB_IMAGE_IMPLEMENTATION 1
-#include "stb_image.h"
-
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <cmath>
-#include <array>
-
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
 
 
-//  ESTADO GLOBAL (solo para este archivo)
-
-
-// Texturas
-static GLuint texture1 = 0;
-static GLuint texture2 = 0;
-
-// VAO/VBO del triángulo de colores (abajo derecha)
-static GLuint triVAO = 0;
-static GLuint triVBO = 0;
-
-// Quad: POS (x,y,z) + UV (u,v)
-static std::array<float, 20> quadVerts = {
-    //   x,      y,    z,    u,    v
-    -0.5f,  0.5f, 0.0f,  0.0f, 1.0f,  // 0: top-left
-    -0.5f, -0.5f, 0.0f,  0.0f, 0.0f,  // 1: bottom-left
-     0.5f, -0.5f, 0.0f,  1.0f, 0.0f,  // 2: bottom-right
-     0.5f,  0.5f, 0.0f,  1.0f, 1.0f   // 3: top-right
-};
-
-// Triángulo de 3 colores (abajo derecha)
-static void InitColorTriangle()
-{
-    float triVerts[] = {
-        //   x      y     z      r     g     b
-         0.2f, -0.2f, 0.0f,   1.0f, 0.0f, 0.0f, // rojo
-         0.8f, -0.2f, 0.0f,   0.0f, 1.0f, 0.0f, // verde
-         0.5f, -0.8f, 0.0f,   0.0f, 0.0f, 1.0f  // azul
-    };
-
-    glGenVertexArrays(1, &triVAO);
-    glBindVertexArray(triVAO);
-
-    glGenBuffers(1, &triVBO);
-    glBindBuffer(GL_ARRAY_BUFFER, triVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(triVerts), triVerts, GL_STATIC_DRAW);
-
-    // posición -> location 0
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
-        6 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // color -> location 1
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE,
-        6 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-
-    glBindVertexArray(0);
-}
-
-
-// CONSTRUCTOR / DESTRUCTOR
+//   Constructor / Destructor
 
 
 App::App()
@@ -77,14 +18,13 @@ App::~App()
 }
 
 
-//LECTOR DE SHADERS 
+//   Utilidad: cargar shader desde archivo (sin BOM)
 
 
 std::string App::loadShaderSource(const std::string& path)
 {
     std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) 
-    {
+    if (!file.is_open()) {
         std::cerr << "[ERROR] No se pudo abrir el shader: " << path << "\n";
         return "";
     }
@@ -104,19 +44,19 @@ std::string App::loadShaderSource(const std::string& path)
     return source;
 }
 
+//   Callback teclado 
 
-//  CALLBACK TECLADO
 
-
-void App::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
+void App::KeyCallback(GLFWwindow* window,int key, int /*scancode*/,int action, int /*mods*/)
 {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) 
+    {
         glfwSetWindowShouldClose(window, true);
     }
 }
 
 
-//INIT: se ejecuta una vez
+//   init() – se ejecuta una vez
 
 
 void App::init()
@@ -139,20 +79,12 @@ void App::init()
 
     glfwMakeContextCurrent(window);
 
-    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
-    {
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         std::cerr << "[ERROR] gladLoadGLLoader\n";
         std::exit(-1);
     }
 
-    // callback de teclado
-    glfwSetWindowUserPointer(window, this);
-    glfwSetKeyCallback(window, [](GLFWwindow* win, int key, int sc, int act, int mods) 
-        {
-        if (auto* self = static_cast<App*>(glfwGetWindowUserPointer(win))) {
-            self->KeyCallback(win, key, sc, act, mods);
-        }
-        });
+    glfwSetKeyCallback(window, App::KeyCallback);
 
     int maj = 0, min = 0;
     glGetIntegerv(GL_MAJOR_VERSION, &maj);
@@ -161,14 +93,24 @@ void App::init()
 
     glViewport(0, 0, 800, 800);
 
+    //ACTIVAR DEPTH TEST PARA QUE EL CUBO SE VEA EN 3D
+    glEnable(GL_DEPTH_TEST);
+
     initShaders();
-    initTriangle();      // quad para texturas / círculo
-    InitColorTriangle(); // triángulo RGB abajo derecha
-    initTexture();
+
+    cuadradoMix.Init(shaderProgram);
+    cuadradoRotado.Init(shaderProgram);
+    circulo.Init(shaderProgram);
+    trianguloRGB.Init(shaderProgram);
+
+    cubo.Init();   // el cubo rotando 3D
+
+	glEnable(GL_DEPTH_TEST);   // para el cubo 3D
 }
 
 
-//  SHADERS
+
+//   initShaders() – crea shaderProgram
 
 
 void App::initShaders()
@@ -177,7 +119,7 @@ void App::initShaders()
     std::string fragmentCode = loadShaderSource("../shaders/basic.fs");
 
     if (vertexCode.empty() || fragmentCode.empty()) {
-        std::cerr << "[ERROR] \n";
+        std::cerr << "[ERROR] Shader vacío. Revisa rutas ../shaders/basic.vs y .fs\n";
     }
 
     const char* vsrc = vertexCode.c_str();
@@ -207,9 +149,10 @@ void App::initShaders()
     glAttachShader(shaderProgram, fs);
     glLinkProgram(shaderProgram);
     glGetProgramiv(shaderProgram, GL_LINK_STATUS, &ok);
-    if (!ok) {
+    if (!ok) 
+    {
         glGetProgramInfoLog(shaderProgram, 1024, nullptr, log);
-        std::cerr << "[ERROR]\n" << log << "\n";
+        std::cerr << "[ERROR] Link Program:\n" << log << "\n";
     }
 
     glDeleteShader(vs);
@@ -217,99 +160,16 @@ void App::initShaders()
 
     if (ok) std::cout << "[INFO] Shaders OK.\n";
 
-    // Asignar samplers a las unidades de textura 0 y 1
+
     glUseProgram(shaderProgram);
     GLint loc1 = glGetUniformLocation(shaderProgram, "uTex1");
     GLint loc2 = glGetUniformLocation(shaderProgram, "uTex2");
-    if (loc1 != -1) glUniform1i(loc1, 0); // GL_TEXTURE0
-    if (loc2 != -1) glUniform1i(loc2, 1); // GL_TEXTURE1
+    if (loc1 != -1) glUniform1i(loc1, 0);
+    if (loc2 != -1) glUniform1i(loc2, 1);
 }
 
 
-//  TEXTURAS
-
-
-void App::initTexture()
-{
-    int width, height, nrChannels;
-    stbi_set_flip_vertically_on_load(true);
-
-    // TEXTURA 1
-    unsigned char* data = stbi_load("../Assets/Texture1.jpg",
-        &width, &height, &nrChannels, 0);
-    if (!data) {
-        std::cerr << "[ERROR] No se pudo cargar Texture1.jpg\n";
-        return;
-    }
-
-    GLenum format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
-
-    glGenTextures(1, &texture1);
-    glBindTexture(GL_TEXTURE_2D, texture1);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0,
-        format, GL_UNSIGNED_BYTE, data);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    stbi_image_free(data);
-
-    // TEXTURA 2
-    data = stbi_load("../Assets/Texture 2.jpg",
-        &width, &height, &nrChannels, 0);
-    if (!data) {
-        std::cerr << "[ERROR] No se pudo cargar Texture 2.jpg\n";
-        return;
-    }
-
-    format = (nrChannels == 4) ? GL_RGBA : GL_RGB;
-
-    glGenTextures(1, &texture2);
-    glBindTexture(GL_TEXTURE_2D, texture2);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0,
-        format, GL_UNSIGNED_BYTE, data);
-    glGenerateMipmap(GL_TEXTURE_2D);
-    stbi_image_free(data);
-}
-
-
-//  QUAD (VAO/VBO/EBO)
-
-
-void App::initTriangle()
-{
-    unsigned int indices[] = { 0,1,2,  0,2,3 };
-
-    glGenVertexArrays(1, &VAO);
-    glBindVertexArray(VAO);
-
-    glGenBuffers(1, &VBO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER,sizeof(float) * quadVerts.size(),quadVerts.data(),GL_STATIC_DRAW);
-
-    glGenBuffers(1, &EBO);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);glBufferData(GL_ELEMENT_ARRAY_BUFFER,sizeof(indices), indices, GL_STATIC_DRAW);
-
-    // POSICIÓN -> location 0
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    // UV -> location 2
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,5 * sizeof(float), (void*)(3 * sizeof(float)));
-    glEnableVertexAttribArray(2);
-
-    glBindVertexArray(0);
-}
-
-
-//  run() llama al bucle principal
+//   run() / mainLoop()
 
 
 void App::run()
@@ -317,17 +177,8 @@ void App::run()
     mainLoop();
 }
 
-
-//  BUCLE PRINCIPAL
-
-
 void App::mainLoop()
 {
-    const GLint uOffsetLoc = glGetUniformLocation(shaderProgram, "uOffset");
-    const GLint uTintColorLoc = glGetUniformLocation(shaderProgram, "uTintColor");
-    const GLint uModeLoc = glGetUniformLocation(shaderProgram, "uMode");
-    const GLint uAngleLoc = glGetUniformLocation(shaderProgram, "uAngle");
-
     double startTime = glfwGetTime();
 
     while (!glfwWindowShouldClose(window)) {
@@ -337,48 +188,19 @@ void App::mainLoop()
         float t = static_cast<float>(now - startTime);
 
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        glEnable(GL_DEPTH_TEST);   // para el cubo 3D
+
+        // --- figuras 2D con tu shader ---
         glUseProgram(shaderProgram);
+        cuadradoMix.Draw();
+        cuadradoRotado.Draw(t);
+        circulo.Draw();
+        trianguloRGB.Draw();
 
-        //Cuadrado 2 texturas + color ARRIBA IZQUIERDA
-        glBindVertexArray(VAO);
-
-        if (uModeLoc != -1) glUniform1i(uModeLoc, 0);
-        if (uOffsetLoc != -1) glUniform2f(uOffsetLoc, -0.5f, 0.5f);
-        if (uTintColorLoc != -1) glUniform4f(uTintColorLoc, 1, 1, 1, 1);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture1);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, texture2);
-
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-        //2) Cuadrado textura rotada ARRIBA DERECHA
-        if (uModeLoc != -1) glUniform1i(uModeLoc, 1);
-        if (uOffsetLoc != -1) glUniform2f(uOffsetLoc, 0.5f, 0.5f);
-        if (uAngleLoc != -1) glUniform1f(uAngleLoc, t);
-        if (uTintColorLoc != -1) glUniform4f(uTintColorLoc, 1, 1, 1, 1);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture1);
-
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-        //3) Círculo azul ABAJO IZQUIERDA
-        if (uModeLoc != -1) glUniform1i(uModeLoc, 2);
-        if (uOffsetLoc != -1) glUniform2f(uOffsetLoc, -0.5f, -0.5f);
-        if (uTintColorLoc != -1) glUniform4f(uTintColorLoc, 0.0f, 0.6f, 1.0f, 1.0f);
-
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-        //4) Triángulo RGB ABAJO DERECHA
-        if (uModeLoc != -1) glUniform1i(uModeLoc, 3);
-        if (uOffsetLoc != -1) glUniform2f(uOffsetLoc, 0.0f, 0.0f);
-
-        glBindVertexArray(triVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        // --- cubo 3D que gira ---
+        cubo.Draw(t);
 
         glfwSwapBuffers(window);
     }
@@ -386,15 +208,19 @@ void App::mainLoop()
 
 
 
+//   cleanup()
+
+
 void App::cleanup()
 {
-    if (VAO)           glDeleteVertexArrays(1, &VAO);
-    if (VBO)           glDeleteBuffers(1, &VBO);
-    if (EBO)           glDeleteBuffers(1, &EBO);
-    if (triVAO)        glDeleteVertexArrays(1, &triVAO);
-    if (triVBO)        glDeleteBuffers(1, &triVBO);
-    if (texture1)      glDeleteTextures(1, &texture1);
-    if (texture2)      glDeleteTextures(1, &texture2);
+    // limpiar figuras
+    cuadradoMix.Cleanup();
+    cuadradoRotado.Cleanup();
+    circulo.Cleanup();
+    trianguloRGB.Cleanup();
+
+	cubo.Cleanup();
+
     if (shaderProgram) glDeleteProgram(shaderProgram);
     if (window)        glfwDestroyWindow(window);
     glfwTerminate();

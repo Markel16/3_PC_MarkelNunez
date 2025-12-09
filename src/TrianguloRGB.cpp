@@ -1,22 +1,22 @@
-//trianguloRGB.cpp
 #include "TrianguloRGB.h"
-#include <glad/glad.h>
 
-void InitTrianguloRGB(GLuint& triVAO, GLuint& triVBO)
+// x,y,z + r,g,b
+static const float triVertsRGB[] = {
+     0.2f, -0.2f, 0.0f,   1.0f, 0.0f, 0.0f,  // rojo
+     0.8f, -0.2f, 0.0f,   0.0f, 1.0f, 0.0f,  // verde
+     0.5f, -0.8f, 0.0f,   0.0f, 0.0f, 1.0f   // azul
+};
+
+void TrianguloRGB::Init(GLuint shaderProgram)
 {
-    float triVerts[] = {
-        //    x      y     z      r     g     b
-         0.2f, -0.2f, 0.0f,   1.0f, 0.0f, 0.0f, // rojo
-         0.8f, -0.2f, 0.0f,   0.0f, 1.0f, 0.0f, // verde
-         0.5f, -0.8f, 0.0f,   0.0f, 0.0f, 1.0f  // azul
-    };
+    shader = shaderProgram;
 
-    glGenVertexArrays(1, &triVAO);
-    glBindVertexArray(triVAO);
+    glGenVertexArrays(1, &VAO);
+    glBindVertexArray(VAO);
 
-    glGenBuffers(1, &triVBO);
-    glBindBuffer(GL_ARRAY_BUFFER, triVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(triVerts), triVerts, GL_STATIC_DRAW);
+    glGenBuffers(1, &VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(triVertsRGB), triVertsRGB, GL_STATIC_DRAW);
 
     // posición -> location 0
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
@@ -31,17 +31,23 @@ void InitTrianguloRGB(GLuint& triVAO, GLuint& triVBO)
     glBindVertexArray(0);
 }
 
-void DrawTrianguloRGB(GLuint shaderProgram,
-    GLuint triVAO)
+void TrianguloRGB::Draw()
 {
-    glUseProgram(shaderProgram);
+    glUseProgram(shader);
+    glBindVertexArray(VAO);
 
-    GLint uModeLoc = glGetUniformLocation(shaderProgram, "uMode");
-    GLint uOffsetLoc = glGetUniformLocation(shaderProgram, "uOffset");
+    GLint uModeLoc = glGetUniformLocation(shader, "uMode");
+    GLint uOffsetLoc = glGetUniformLocation(shader, "uOffset");
 
-    if (uModeLoc != -1) glUniform1i(uModeLoc, 3);//triángulo
-    if (uOffsetLoc != -1) glUniform2f(uOffsetLoc, 0.0f, 0.0f); //no se desplaza
+    if (uModeLoc != -1) glUniform1i(uModeLoc, 3);          // modo triángulo RGB
+    if (uOffsetLoc != -1) glUniform2f(uOffsetLoc, 0.0f, 0.0f); // lo dejamos en su sitio
 
-    glBindVertexArray(triVAO);
     glDrawArrays(GL_TRIANGLES, 0, 3);
+}
+
+void TrianguloRGB::Cleanup()
+{
+    if (VAO) glDeleteVertexArrays(1, &VAO);
+    if (VBO) glDeleteBuffers(1, &VBO);
+    VAO = VBO = 0;
 }

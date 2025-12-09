@@ -4,45 +4,49 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-class App {
+// Figuras 2D
+#include "CuadradoMix.h"
+#include "CuadradoRotado.h"
+#include "Circulo.h"
+#include "TrianguloRGB.h"
+
+// Cubo 3D que rota
+#include "CuboRotado.h"
+
+class App
+{
 public:
     App();
     ~App();
 
-    void run();
+    void run();    // arranca la app (llama a mainLoop)
 
 private:
-    //Estado general
+    // --- Estado general de la aplicación ---
     GLFWwindow* window = nullptr;
+    GLuint shaderProgram = 0;   // shader compartido por las figuras
 
-    GLuint VBO = 0;
-    GLuint EBO = 0;
-    GLuint VAO = 0;
-    GLuint shaderProgram = 0;
+    // --- Figuras en pantalla ---
+    CuadradoMix    cuadradoMix;     // cuadrado mezcla de 2 texturas + color
+    CuadradoRotado cuadradoRotado;  // cuadrado con textura rotada
+    Circulo        circulo;         // círculo sólido
+    TrianguloRGB   trianguloRGB;    // triángulo con 3 colores
+    CuboRotado    cubo;            // cubo que rota
 
-    GLuint triVAO = 0;
-    GLuint triVBO = 0;
+    // --- Ciclo de vida ---
+    void init();        // inicializa GLFW, GLAD, shaders y figuras
+    void mainLoop();    // bucle principal (draw de todas las figuras)
+    void cleanup();     // libera recursos
 
-    //Ciclo de vida
-    void init();
-    void mainLoop();
-    void cleanup();
+    // --- Callbacks ---
+    // Debe ser static porque se pasa directamente a glfwSetKeyCallback
+    static void KeyCallback(GLFWwindow* window,
+        int key,
+        int scancode,
+        int action,
+        int mods);
 
-    // Callbacks
-    void KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods);
-
-    //Inicializaciones
-    void initTriangle();//quad para texturas + círculo
-    void initShaders();//carga shaders
-    void initTexture();//texturas cuadrado
-    void initTrianguloRGB();//triángulo abajo derecha
-
-    //Funciones de dibujado
-    void DrawCuadradoMix();
-    void DrawCuadradoRotado(float angle);
-    void DrawCirculo();
-    void DrawTrianguloRGB();
-
-    //Utilidad
-    std::string loadShaderSource(const std::string& path);
+    // --- Shaders / utilidades ---
+    void initShaders();                            // compila y linka shaderProgram
+    std::string loadShaderSource(const std::string& path); // lee el código de los .vs/.fs
 };
