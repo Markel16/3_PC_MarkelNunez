@@ -2,6 +2,9 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include "Camara.h"
+#include <Terreno.h>
+#include <Agua.h>
 
 
 //   Constructor / Destructor
@@ -47,20 +50,18 @@ std::string App::loadShaderSource(const std::string& path)
 //   Callback teclado 
 
 
-void App::KeyCallback(GLFWwindow* window,int key, int /*scancode*/,int action, int /*mods*/)
+void App::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int mods)
 {
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) 
-    {
-        glfwSetWindowShouldClose(window, true);
-    }
+
 }
 
 
-//   init() – se ejecuta una vez
 
+// se ejecuta una vez
 
 void App::init()
 {
+    // --- GLFW ---
     if (!glfwInit()) {
         std::cerr << "[ERROR] glfwInit\n";
         std::exit(-1);
@@ -70,7 +71,7 @@ void App::init()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    window = glfwCreateWindow(800, 800, "Markel Núñez", nullptr, nullptr);
+    window = glfwCreateWindow(1920, 1080, "Markel Núñez", nullptr, nullptr);
     if (!window) {
         std::cerr << "[ERROR] creando ventana\n";
         glfwTerminate();
@@ -84,33 +85,124 @@ void App::init()
         std::exit(-1);
     }
 
+    glfwSetWindowUserPointer(window, this);
     glfwSetKeyCallback(window, App::KeyCallback);
+
+    int w, h;
+    glfwGetFramebufferSize(window, &w, &h);
+    glViewport(0, 0, w, h);
+
+    glEnable(GL_DEPTH_TEST);
 
     int maj = 0, min = 0;
     glGetIntegerv(GL_MAJOR_VERSION, &maj);
     glGetIntegerv(GL_MINOR_VERSION, &min);
     std::cout << "[INFO] OpenGL " << maj << "." << min << "\n";
 
-    glViewport(0, 0, 800, 800);
-
-    //ACTIVAR DEPTH TEST PARA QUE EL CUBO SE VEA EN 3D
-    glEnable(GL_DEPTH_TEST);
-
+    // Shaders base 
     initShaders();
 
     cuadradoMix.Init(shaderProgram);
     cuadradoRotado.Init(shaderProgram);
     circulo.Init(shaderProgram);
     trianguloRGB.Init(shaderProgram);
+    cubo.Init();
 
-    cubo.Init();   // el cubo rotando 3D
 
-	glEnable(GL_DEPTH_TEST);   // para el cubo 3D
+    //      TERRENO
+
+    if (!terreno.Init(
+        "../Assets/heightmap.jpeg",
+        "../Assets/cesped.jpg",
+        "../Assets/roca.jpg"))
+    {
+        std::cerr << "[ERROR] Terreno.Init\n";
+    }
+
+
+//        AGUA
+
+
+// Ttamaño del la isla
+    float terrenoW = (terreno.GetWidthHM() - 1) * terreno.GetScaleXZ();
+    float terrenoH = (terreno.GetHeightHM() - 1) * terreno.GetScaleXZ();
+
+    // Centro real del terreno
+    float cx = terrenoW * 0.5f;
+    float cz = terrenoH * 0.5f;
+
+    // para la altura del agua
+    float waterSize = std::max(terrenoW, terrenoH) * 2.0f;
+
+    agua.SetSize(waterSize);
+    agua.SetCenter(cx, cz);
+
+    // Altura del agua
+    agua.SetWaterY(0.2f);
+
+    agua.Init("../Assets/agua.jpg");
+
+
+    /
+    //     MODELOS OBJ
+   
+    bool okTree = treeModel.Load("../Assets/tree.obj");
+    bool okRock = rockModel.Load("../Assets/rock.obj");
+
+    if (!okTree) std::cerr << "[WARN] No se pudo cargar tree.obj\n";
+    if (!okRock) std::cerr << "[WARN] No se pudo cargar rock.obj\n";
+
+    
+    // POSICIONAR OBJETOS
+   
+    float maxX = (terreno.GetWidthHM() - 1) * terreno.GetScaleXZ();
+    float maxZ = (terreno.GetHeightHM() - 1) * terreno.GetScaleXZ();
+
+    auto Rand01 = []() {
+        return (float)rand() / (float)RAND_MAX;
+        };
+
+    srand(1234);
+
+    arboles.clear();
+    rocas.clear();
+
+    //Árboles
+    for (int i = 50; i < 60; i++)
+    {
+        float x = Rand01() * maxX;
+        float z = Rand01() * maxZ;
+
+        float nx = x / maxX;
+        float nz = z / maxZ;
+        float dx = nx - 0.5f;
+        float dz = nz - 0.5f;
+        float dist = sqrtf(dx * dx + dz * dz);
+
+        if (dist > 0.45f) { i--; continue; }
+
+        float y = terreno.GetHeightWorld(x, z);
+        arboles.push_back(glm::vec3(x, y, z));
+    }
+
+    //Rocas 
+    for (int i = 50; i < 60; i++)
+    {
+        float x = Rand01() * maxX;
+        float z = Rand01() * maxZ;
+
+        float nx = x / maxX;
+        float nz = z / maxZ;
+        float dx = nx - 0.5f;
+        float dz = nz - 0.5f;
+        float dist = sqrtf(dx * dx + dz * dz);
+
+        if (dist > 0.48f) { i--; continue; }
+
+        float y = terreno.GetHeightWorld(x, z);
+        rocas.push_back(glm::vec3(x, y, z));
+    }
 }
-
-
-
-//   initShaders() – crea shaderProgram
 
 
 void App::initShaders()
@@ -119,7 +211,8 @@ void App::initShaders()
     std::string fragmentCode = loadShaderSource("../shaders/basic.fs");
 
     if (vertexCode.empty() || fragmentCode.empty()) {
-        std::cerr << "[ERROR] Shader vacío. Revisa rutas ../shaders/basic.vs y .fs\n";
+        std::cerr << "[ERROR] Shader vacío. Revisa rutas ../shaders/basic.vs y basic.fs\n";
+        return;
     }
 
     const char* vsrc = vertexCode.c_str();
@@ -128,98 +221,137 @@ void App::initShaders()
     GLuint vs = glCreateShader(GL_VERTEX_SHADER);
     glShaderSource(vs, 1, &vsrc, nullptr);
     glCompileShader(vs);
-    GLint ok = GL_FALSE; char log[1024];
+
+    GLint ok = GL_FALSE;
+    char log[1024];
+
     glGetShaderiv(vs, GL_COMPILE_STATUS, &ok);
     if (!ok) {
         glGetShaderInfoLog(vs, 1024, nullptr, log);
         std::cerr << "[ERROR] Vertex Shader:\n" << log << "\n";
+        glDeleteShader(vs);
+        return;
     }
 
     GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
     glShaderSource(fs, 1, &fsrc, nullptr);
     glCompileShader(fs);
+
     glGetShaderiv(fs, GL_COMPILE_STATUS, &ok);
     if (!ok) {
         glGetShaderInfoLog(fs, 1024, nullptr, log);
         std::cerr << "[ERROR] Fragment Shader:\n" << log << "\n";
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+        return;
     }
 
     shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vs);
     glAttachShader(shaderProgram, fs);
     glLinkProgram(shaderProgram);
+
     glGetProgramiv(shaderProgram, GL_LINK_STATUS, &ok);
-    if (!ok) 
-    {
+    if (!ok) {
         glGetProgramInfoLog(shaderProgram, 1024, nullptr, log);
         std::cerr << "[ERROR] Link Program:\n" << log << "\n";
     }
+    else {
+        std::cout << "[INFO] Shaders OK.\n";
+    }
+
+    bool ok1 = treeModel.Load("../Assets/tree.obj");
+    bool ok2 = rockModel.Load("../Assets/rock.obj"); 
+
+    std::cout << "arbol cargado: " << ok1 << "\n";
+    std::cout << "roca cargada: " << ok2 << "\n";
+
 
     glDeleteShader(vs);
     glDeleteShader(fs);
-
-    if (ok) std::cout << "[INFO] Shaders OK.\n";
-
-
-    glUseProgram(shaderProgram);
-    GLint loc1 = glGetUniformLocation(shaderProgram, "uTex1");
-    GLint loc2 = glGetUniformLocation(shaderProgram, "uTex2");
-    if (loc1 != -1) glUniform1i(loc1, 0);
-    if (loc2 != -1) glUniform1i(loc2, 1);
 }
-
-
-//   run() / mainLoop()
 
 
 void App::run()
 {
     mainLoop();
 }
-
 void App::mainLoop()
 {
-    double startTime = glfwGetTime();
+    double lastTime = glfwGetTime();
 
-    while (!glfwWindowShouldClose(window)) {
+    while (!glfwWindowShouldClose(window))
+    {
+        double now = glfwGetTime();
+        float dt = (float)(now - lastTime);
+        lastTime = now;
+
         glfwPollEvents();
 
-        double now = glfwGetTime();
-        float t = static_cast<float>(now - startTime);
+        int w = 0, h = 0;
+        glfwGetFramebufferSize(window, &w, &h);
+        glViewport(0, 0, w, h);
+        float aspect = (h > 0) ? (float)w / (float)h : 1.0f;
 
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        camara.Update(window, dt);
+
+        glEnable(GL_DEPTH_TEST);
+        glClearColor(0.08f, 0.08f, 0.10f, 1.0f); // <- NO rosa
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glEnable(GL_DEPTH_TEST);   // para el cubo 3D
+        // 1) Terreno + Agua
+        terreno.Draw(camara, aspect);
+        agua.Draw(camara, aspect);
 
-        // --- figuras 2D con tu shader ---
-        glUseProgram(shaderProgram);
-        cuadradoMix.Draw();
-        cuadradoRotado.Draw(t);
-        circulo.Draw();
-        trianguloRGB.Draw();
 
-        // --- cubo 3D que gira ---
-        cubo.Draw(t);
+
+        // 2) Modelos del obj
+        if (modelShader != 0)
+        {
+            glm::mat4 view = camara.GetViewMatrix();
+            glm::mat4 proj = camara.GetProjectionMatrix(aspect);
+            glm::mat4 M(1.0f);
+            M = glm::translate(M, glm::vec3(10.0f, 10.0f, 10.0f)); 
+            M = glm::scale(M, glm::vec3(300.0f));                   
+            treeModel.Draw(modelShader, M, view, proj);
+
+            for (const auto& p : arboles)
+            {
+                glm::mat4 M(800.0f);
+                M = glm::translate(M, p);
+                M = glm::scale(M, glm::vec3(1.0f));
+                treeModel.Draw(modelShader, M, view, proj);
+            }
+
+            for (const auto& p : rocas)
+            {
+                glm::mat4 M(800.0f);
+                M = glm::translate(M, p);
+                M = glm::scale(M, glm::vec3(1.0f));
+                rockModel.Draw(modelShader, M, view, proj);
+            }
+        }
 
         glfwSwapBuffers(window);
     }
 }
 
-
-
-//   cleanup()
-
-
 void App::cleanup()
 {
-    // limpiar figuras
+    
     cuadradoMix.Cleanup();
     cuadradoRotado.Cleanup();
     circulo.Cleanup();
     trianguloRGB.Cleanup();
 
 	cubo.Cleanup();
+
+	terreno.Cleanup();
+	
+
+	treeModel.Cleanup();
+	rockModel.Cleanup();
+	
 
     if (shaderProgram) glDeleteProgram(shaderProgram);
     if (window)        glfwDestroyWindow(window);
