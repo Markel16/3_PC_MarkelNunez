@@ -57,7 +57,7 @@ void App::KeyCallback(GLFWwindow* window, int key, int scancode, int action, int
 
 
 
-// se ejecuta una vez
+
 
 void App::init()
 {
@@ -108,6 +108,10 @@ void App::init()
     trianguloRGB.Init(shaderProgram);
     cubo.Init();
 
+    agua.SetWaterY(15.0f);          // la altura base que te gustaba
+    agua.Init("../Assets/agua.jpg"); // o si ya lo tienes inicializado, ok
+    agua.SetTide(true, 0.02f, 2.0f);  // activa (usa la waterY actual como base)
+
 
     //      TERRENO
 
@@ -122,6 +126,7 @@ void App::init()
 
 //        AGUA
 
+    agua.SetTide(true, 0.4f, 0.6f); // amplitud 0.4, velocidad 0.6
 
 // Ttamaño del la isla
     float terrenoW = (terreno.GetWidthHM() - 1) * terreno.GetScaleXZ();
@@ -143,7 +148,7 @@ void App::init()
     agua.Init("../Assets/agua.jpg");
 
 
-    /
+    
     //     MODELOS OBJ
    
     bool okTree = treeModel.Load("../Assets/tree.obj");
@@ -299,9 +304,14 @@ void App::mainLoop()
         glClearColor(0.08f, 0.08f, 0.10f, 1.0f); // <- NO rosa
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        //para que sube y baje el agua
+        agua.Update((float)glfwGetTime());
+    
+        agua.Draw(camara, aspect);
+
         // 1) Terreno + Agua
         terreno.Draw(camara, aspect);
-        agua.Draw(camara, aspect);
+        
 
 
 

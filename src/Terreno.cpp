@@ -385,6 +385,9 @@ void Terreno::Draw(const Camara& camara, float aspectRatio)
     glm::mat4 proj = camara.GetProjectionMatrix(aspectRatio);
     glm::mat4 mvp = proj * view * model;
 
+	//niebla y para la poscion de la camara
+    glm::vec3 camPos = camara.GetPosition();
+
     GLint locMVP = glGetUniformLocation(shaderProgram, "uMVP");
     GLint locModel = glGetUniformLocation(shaderProgram, "uModel");
     GLint locView = glGetUniformLocation(shaderProgram, "uView");
@@ -403,6 +406,8 @@ void Terreno::Draw(const Camara& camara, float aspectRatio)
 
     glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, 0);
 
+	//niebla y posicion de la camara
+    glUniform3fv(glGetUniformLocation(shaderProgram, "uCameraPos"), 1, &camPos[0]);
     glBindVertexArray(0);
 }
 

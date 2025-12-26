@@ -1,16 +1,18 @@
 #include "Agua.h"
 #include "Camara.h"
+#include "stb_image.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+
+#include <iostream>
 #include <fstream>
 #include <sstream>
-#include <iostream>
+#include <cmath>
 
-
-#include "stb_image.h"
-
-//  utilidades shader 
+// =====================
+// Utilidades shader
+// =====================
 std::string Agua::loadTextFile(const std::string& path)
 {
     std::ifstream file(path);
@@ -65,7 +67,6 @@ GLuint Agua::createProgram(const std::string& vsSrc, const std::string& fsSrc)
 
 bool Agua::createShader()
 {
-    // las rutas
     std::string vs = loadTextFile("../shaders/water.vs");
     std::string fs = loadTextFile("../shaders/water.fs");
     if (vs.empty() || fs.empty()) {
@@ -80,10 +81,12 @@ bool Agua::createShader()
     uModelLoc = glGetUniformLocation(shaderProgram, "uModel");
     uTexLoc = glGetUniformLocation(shaderProgram, "uWaterTex");
 
-    return true;
+    return (shaderProgram != 0);
 }
 
-//textura 
+// =====================
+// Textura
+// =====================
 GLuint Agua::loadTexture(const std::string& path)
 {
     int w, h, n;
@@ -112,28 +115,32 @@ GLuint Agua::loadTexture(const std::string& path)
     return tex;
 }
 
-// API 
+
+// API pública
+
 bool Agua::Init(const std::string& waterTexPath)
 {
     // 1) Shader
     if (!createShader())
         return false;
 
-    // 2) Textura
+    // Textura
     texWater = loadTexture(waterTexPath);
     if (!texWater)
         return false;
 
-    // 3) Malla del plano 
-    //   las posiciones  Pos (x,y,z) + UV (u,v)
-    float half = size * 0.5f;
+
+    //el tamaño yposicion real con la matriz Draw
+    float half = 0.5f;
 
     float vertices[] = {
-        -half, waterY, -half,   0.0f, 0.0f,
-         half, waterY, -half,   1.0f, 0.0f,
-         half, waterY,  half,   1.0f, 1.0f,
-        -half, waterY,  half,   0.0f, 1.0f
+       -0.5f, 0.0f, -0.5f,   0.0f, 0.0f,
+        0.5f, 0.0f, -0.5f,   1.0f, 0.0f,
+        0.5f, 0.0f,  0.5f,   1.0f, 1.0f,
+       -0.5f, 0.0f,  0.5f,   0.0f, 1.0f
     };
+
+
 
     unsigned int indices[] = { 0, 1, 2,  2, 3, 0 };
 
@@ -149,11 +156,11 @@ bool Agua::Init(const std::string& waterTexPath)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
-    // layout location=0
+    // layout location=0 -> vec3 pos
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // layout location=1  -> vec2 uv
+    // layout location=1 -> vec2 uv
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
@@ -161,6 +168,45 @@ bool Agua::Init(const std::string& waterTexPath)
 
     return true;
 }
+
+void Agua::SetSize(float s)
+{
+    sizeX = s;
+    sizeZ = s;
+}
+
+void Agua::SetCenter(float x, float z)
+{
+    centerX = x;
+    centerZ = z;
+}
+
+void Agua::SetWaterY(float y)
+{
+    baseWaterY = y;
+    waterY = y;
+
+    // Si activas marea después, esta será la base
+    tideBaseY = y;
+}
+
+void Agua::SetWave(float amplitude, float speed)
+{
+    waveAmp = amplitude;
+    waveSpeed = speed;
+}
+
+void Agua::SetTide(bool enabled, float amplitude, float speed)
+{
+    tideEnabled = enabled;
+    tideAmplitude = amplitude;
+    tideSpeed = speed;
+
+    // base de la marea = altura actual
+    tideBaseY = waterY;
+}
+
+
 
 void Agua::Draw(const Camara& camara, float aspect)
 {
@@ -170,11 +216,10 @@ void Agua::Draw(const Camara& camara, float aspect)
     glm::mat4 view = camara.GetViewMatrix();
     glm::mat4 proj = camara.GetProjectionMatrix(aspect);
 
-    glm::mat4 model = glm::mat4(1.0f);
-
-    // mover el agua al centro del terreno
-    model = glm::translate(model, glm::vec3(centerX, 0.0f, centerZ));
-
+    // MODEL: coloca el agua en el centro + altura, y la escala al tamaño real
+    glm::mat4 model(1.0f);
+    model = glm::translate(model, glm::vec3(centerX, waterY, centerZ));
+    model = glm::scale(model, glm::vec3(sizeX, 1.0f, sizeZ));
 
     glUniformMatrix4fv(uViewLoc, 1, GL_FALSE, glm::value_ptr(view));
     glUniformMatrix4fv(uProjLoc, 1, GL_FALSE, glm::value_ptr(proj));
@@ -184,11 +229,22 @@ void Agua::Draw(const Camara& camara, float aspect)
     glBindTexture(GL_TEXTURE_2D, texWater);
     glUniform1i(uTexLoc, 0);
 
-    // para que el agua tape cosas que no quiero ver
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
     glBindVertexArray(0);
 }
+// esto es para que no baje tanto ell agua
+void Agua::Update(float t)
+{
+    if (!tideEnabled) return;
+
+    waterY = tideBaseY + sinf(t * tideSpeed) * tideAmplitude;
+
+    // no permitir que baje más de esto
+    const float minY = tideBaseY - (tideAmplitude * 0.25f);
+    if (waterY < minY) waterY = minY;
+}
+
 
 void Agua::Cleanup()
 {

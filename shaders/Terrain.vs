@@ -13,6 +13,9 @@ uniform mat4 uProj;
 // Salidas hacia el fragment shader
 out vec3 vNormal;   // normal en espacio mundial
 out vec2 vTexCoord; // coordenadas de textura
+//niebla
+out vec3 vWorldPos;
+
 
 void main()
 {
@@ -25,4 +28,10 @@ void main()
 
     // Pasamos las UV tal cual
     vTexCoord = aTex;
+    //niebla
+    vec4 worldPos = uModel * vec4(aPos, 1.0);
+vWorldPos = worldPos.xyz;
+
+gl_Position = uProj * uView * worldPos;
+
 }
