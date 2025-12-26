@@ -16,7 +16,7 @@ void main()
 {
     vec3 N = normalize(vNormal);
 
-    // Mezcla del cespez y piedra
+    //mezcla del cespez y piedra
     float slope = 1.0 - N.y;
     slope = smoothstep(0.2, 0.6, slope);
 
@@ -29,12 +29,12 @@ void main()
     //niebla
     float dist = distance(uCameraPos, vWorldPos);
 
-    float fogStart = 40.0;
-    float fogEnd   = 120.0;
+    float fogStart = 1.0;
+    float fogEnd   = 300.0;
 
     float fogFactor = clamp((fogEnd - dist) / (fogEnd - fogStart), 0.0, 1.0);
 
-    vec3 fogColor = vec3(0.6, 0.7, 0.8); // colores
+    vec3 fogColor = vec3(0.6, 0.7, 0.8); //colores
 
     vec3 finalColor = mix(fogColor, color.rgb, fogFactor);
 
