@@ -1,4 +1,4 @@
-#include "Agua.h"
+ï»¿#include "Agua.h"
 #include "Camara.h"
 #include "stb_image.h"
 
@@ -10,9 +10,7 @@
 #include <sstream>
 #include <cmath>
 
-// =====================
-// Utilidades shader
-// =====================
+
 std::string Agua::loadTextFile(const std::string& path)
 {
     std::ifstream file(path);
@@ -70,7 +68,7 @@ bool Agua::createShader()
     std::string vs = loadTextFile("../shaders/water.vs");
     std::string fs = loadTextFile("../shaders/water.fs");
     if (vs.empty() || fs.empty()) {
-        std::cerr << "[Agua] Shader vacío, revisa rutas water.vs/fs\n";
+        std::cerr << "[Agua] Shader vacÃ­o, revisa rutas water.vs/fs\n";
         return false;
     }
 
@@ -84,9 +82,7 @@ bool Agua::createShader()
     return (shaderProgram != 0);
 }
 
-// =====================
-// Textura
-// =====================
+
 GLuint Agua::loadTexture(const std::string& path)
 {
     int w, h, n;
@@ -116,7 +112,7 @@ GLuint Agua::loadTexture(const std::string& path)
 }
 
 
-// API pública
+// API pÃºblica
 
 bool Agua::Init(const std::string& waterTexPath)
 {
@@ -130,15 +126,16 @@ bool Agua::Init(const std::string& waterTexPath)
         return false;
 
 
-    //el tamaño yposicion real con la matriz Draw
+    //el tamaÃ±o yposicion real con la matriz Draw
     float half = 0.5f;
 
     float vertices[] = {
-       -0.5f, 0.0f, -0.5f,   0.0f, 0.0f,
-        0.5f, 0.0f, -0.5f,   1.0f, 0.0f,
-        0.5f, 0.0f,  0.5f,   1.0f, 1.0f,
-       -0.5f, 0.0f,  0.5f,   0.0f, 1.0f
+        -half, 0.0f, -half,   0.0f, 0.0f,
+         half, 0.0f, -half,   1.0f, 0.0f,
+         half, 0.0f,  half,   1.0f, 1.0f,
+        -half, 0.0f,  half,   0.0f, 1.0f
     };
+
 
 
 
@@ -156,11 +153,11 @@ bool Agua::Init(const std::string& waterTexPath)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
-    // layout location=0 -> vec3 pos
+
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
-    // layout location=1 -> vec2 uv
+   
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
@@ -186,7 +183,7 @@ void Agua::SetWaterY(float y)
     baseWaterY = y;
     waterY = y;
 
-    // Si activas marea después, esta será la base
+    
     tideBaseY = y;
 }
 
@@ -210,13 +207,31 @@ void Agua::SetTide(bool enabled, float amplitude, float speed)
 
 void Agua::Draw(const Camara& camara, float aspect)
 {
+    // Guardar estados previos
+    GLboolean wasCull = glIsEnabled(GL_CULL_FACE);
+    GLboolean wasBlend = glIsEnabled(GL_BLEND);
+    GLboolean wasDepth = glIsEnabled(GL_DEPTH_TEST);
+
+    GLboolean oldDepthMask;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &oldDepthMask);
+
+   
+    glDisable(GL_CULL_FACE);
+
+   
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+   
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+
     glUseProgram(shaderProgram);
     glBindVertexArray(VAO);
 
     glm::mat4 view = camara.GetViewMatrix();
     glm::mat4 proj = camara.GetProjectionMatrix(aspect);
 
-    // MODEL: coloca el agua en el centro + altura, y la escala al tamaño real
     glm::mat4 model(1.0f);
     model = glm::translate(model, glm::vec3(centerX, waterY, centerZ));
     model = glm::scale(model, glm::vec3(sizeX, 1.0f, sizeZ));
@@ -232,15 +247,23 @@ void Agua::Draw(const Camara& camara, float aspect)
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
     glBindVertexArray(0);
+
+  
+    glDepthMask(oldDepthMask);
+
+    if (!wasDepth) glDisable(GL_DEPTH_TEST);
+    if (!wasBlend) glDisable(GL_BLEND);
+    if (wasCull)   glEnable(GL_CULL_FACE);
 }
-// esto es para que no baje tanto ell agua
+
+
 void Agua::Update(float t)
 {
     if (!tideEnabled) return;
 
     waterY = tideBaseY + sinf(t * tideSpeed) * tideAmplitude;
 
-    // no permitir que baje más de esto
+  
     const float minY = tideBaseY - (tideAmplitude * 0.25f);
     if (waterY < minY) waterY = minY;
 }

@@ -3,76 +3,80 @@
 #include <sstream>
 #include <iostream>
 
-std::string Shader::LoadTextFile(const std::string& path)
+// Lee archivo de texto completo
+static std::string ReadTextFile(const std::string& path)
 {
-    std::ifstream file(path, std::ios::binary);
-    if (!file.is_open()) {
-        std::cerr << "[Shader] No se pudo abrir: " << path << "\n";
-        return "";
-    }
+    std::ifstream file(path);
     std::stringstream ss;
     ss << file.rdbuf();
-    std::string s = ss.str();
+    return ss.str();
+}
 
-    // quitar BOM UTF-8
-    if (s.size() >= 3 &&
-        (unsigned char)s[0] == 0xEF &&
-        (unsigned char)s[1] == 0xBB &&
-        (unsigned char)s[2] == 0xBF) {
-        s.erase(0, 3);
+// Compila un shader de tipo (VS/FS)
+static GLuint Compile(GLenum type, const std::string& src)
+{
+    GLuint s = glCreateShader(type);
+    const char* c = src.c_str();
+    glShaderSource(s, 1, &c, nullptr);
+    glCompileShader(s);
+
+    GLint ok = 0;
+    glGetShaderiv(s, GL_COMPILE_STATUS, &ok);
+    if (!ok)
+    {
+        char log[2048];
+        glGetShaderInfoLog(s, 2048, nullptr, log);
+        std::cerr << "Shader compile error:\n" << log << "\n";
+        glDeleteShader(s);
+        return 0;
     }
     return s;
 }
 
-GLuint Shader::Compile(GLenum type, const std::string& src)
+// Load: compila y linkea un programa
+bool Shader::Load(const std::string& vsPath, const std::string& fsPath)
 {
-    GLuint sh = glCreateShader(type);
-    const char* c = src.c_str();
-    glShaderSource(sh, 1, &c, nullptr);
-    glCompileShader(sh);
+    std::string vs = ReadTextFile(vsPath);
+    std::string fs = ReadTextFile(fsPath);
 
-    GLint ok = 0;
-    glGetShaderiv(sh, GL_COMPILE_STATUS, &ok);
-    if (!ok) {
-        char log[1024];
-        glGetShaderInfoLog(sh, 1024, nullptr, log);
-        std::cerr << "[Shader] Error compilando: " << log << "\n";
-    }
-    return sh;
-}
-
-bool Shader::LoadFromFiles(const std::string& vsPath, const std::string& fsPath)
-{
-    std::string vsSrc = LoadTextFile(vsPath);
-    std::string fsSrc = LoadTextFile(fsPath);
-    if (vsSrc.empty() || fsSrc.empty()) return false;
-
-    GLuint vs = Compile(GL_VERTEX_SHADER, vsSrc);
-    GLuint fs = Compile(GL_FRAGMENT_SHADER, fsSrc);
+    GLuint v = Compile(GL_VERTEX_SHADER, vs);
+    GLuint f = Compile(GL_FRAGMENT_SHADER, fs);
+    if (!v || !f) return false;
 
     id = glCreateProgram();
-    glAttachShader(id, vs);
-    glAttachShader(id, fs);
+    glAttachShader(id, v);
+    glAttachShader(id, f);
     glLinkProgram(id);
+
+    glDeleteShader(v);
+    glDeleteShader(f);
 
     GLint ok = 0;
     glGetProgramiv(id, GL_LINK_STATUS, &ok);
-    if (!ok) {
-        char log[1024];
-        glGetProgramInfoLog(id, 1024, nullptr, log);
-        std::cerr << "[Shader] Error linkando: " << log << "\n";
-        glDeleteShader(vs);
-        glDeleteShader(fs);
+    if (!ok)
+    {
+        char log[2048];
+        glGetProgramInfoLog(id, 2048, nullptr, log);
+        std::cerr << "Program link error:\n" << log << "\n";
+        glDeleteProgram(id);
+        id = 0;
         return false;
     }
-
-    glDeleteShader(vs);
-    glDeleteShader(fs);
     return true;
 }
 
-void Shader::Cleanup()
+
+void Shader::Use() const
 {
-    if (id) glDeleteProgram(id);
-    id = 0;
+    glUseProgram(id);
+}
+
+
+void Shader::Destroy()
+{
+    if (id)
+    {
+        glDeleteProgram(id);
+        id = 0;
+    }
 }

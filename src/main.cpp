@@ -1,8 +1,9 @@
+
 #include "App.h"
 
 int main()
 {
     App app;
-    app.run();
+    app.mainLoop();
     return 0;
 }

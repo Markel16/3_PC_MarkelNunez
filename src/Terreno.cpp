@@ -34,7 +34,6 @@ static std::string LoadTextFile(const std::string& path)
     {
         s.erase(0, 3);
     }
-
     return s;
 }
 
@@ -59,13 +58,12 @@ bool Terreno::Init(const std::string& heightmapPath,
     if (!loadHeightmap(heightmapPath, heights))
         return false;
 
-    // Guardamos alturas para poder consultar altura en mundo (árboles/rocas)
+    // Guardamos alturas para poder consultar altura/normal
     heightsHM = heights;
 
-    // Generar malla con estas alturas
+    // Generar malla (esto además aplica isla+gamma y actualiza heightsHM)
     generateMesh(heightsHM);
 
-    // Shader + texturas
     if (!createShader())
         return false;
 
@@ -97,7 +95,7 @@ bool Terreno::loadHeightmap(const std::string& path, std::vector<float>& heights
         for (int x = 0; x < widthHM; ++x)
         {
             int idx = z * widthHM + x;
-            unsigned char pixel = data[idx]; // 0..255
+            unsigned char pixel = data[idx];
             heights[idx] = (float)pixel / 255.0f; // 0..1
         }
     }
@@ -106,62 +104,60 @@ bool Terreno::loadHeightmap(const std::string& path, std::vector<float>& heights
     return true;
 }
 
-
-// Generar malla (VAO/VBO/EBO)
-
-void Terreno::generateMesh(const std::vector<float>& heights)
+// ------------------------------------------------------------
+// Generar malla (VAO/VBO/EBO) + normales + aplicar isla+gamma
+// ------------------------------------------------------------
+void Terreno::generateMesh(const std::vector<float>& heightsIn)
 {
     std::vector<TerrenoVertex> vertices;
     std::vector<unsigned int> indices;
 
     vertices.resize(widthHM * heightHM);
 
-    // 1) Vértices
+    // Copia local para aplicar isla+gamma y guardarla en heightsHM
+    heightsHM = heightsIn;
+
     for (int z = 0; z < heightHM; ++z)
     {
         for (int x = 0; x < widthHM; ++x)
         {
             int idx = z * widthHM + x;
 
-            float h = heights[idx]; // 0..1
+            float h = heightsHM[idx];  // 0..1
 
-
+            // gamma / contraste
             h = powf(h, 2.2f);
 
-
-            float nx = (float)x / (float)(widthHM - 1);  
-            float nz = (float)z / (float)(heightHM - 1); 
+            // isla (más alto al centro, baja a bordes)
+            float nx = (float)x / (float)(widthHM - 1);
+            float nz = (float)z / (float)(heightHM - 1);
             float dx = nx - 0.5f;
             float dz = nz - 0.5f;
 
-            float dist = sqrtf(dx * dx + dz * dz);   
-            float island = 1.0f - (dist / 0.7071f);   
+            float dist = sqrtf(dx * dx + dz * dz);
+            float island = 1.0f - (dist / 0.7071f);
             island = std::clamp(island, 0.0f, 1.0f);
-            island = powf(island, 2.0f);             
+            island = powf(island, 2.0f);
 
             h *= island;
 
-            //  scaleXZ/scaleY MIEMBROS
+            // IMPORTANTE: guardar la altura final (0..1) que usa GetHeightWorld()
+            heightsHM[idx] = h;
+
             float posX = x * scaleXZ;
             float posZ = z * scaleXZ;
             float posY = h * scaleY;
 
             TerrenoVertex v{};
             v.pos = glm::vec3(posX, posY, posZ);
-
-           
-            v.uv = glm::vec2(
-                (float)x / (float)(widthHM - 1),
-                (float)z / (float)(heightHM - 1)
-            );
-
-            v.normal = glm::vec3(0, 1, 0); 
+            v.uv = glm::vec2(nx, nz);
+            v.normal = glm::vec3(0, 1, 0);
 
             vertices[idx] = v;
         }
     }
 
-    // 2) Índices (2 triángulos por quad)
+    // Índices
     for (int z = 0; z < heightHM - 1; ++z)
     {
         for (int x = 0; x < widthHM - 1; ++x)
@@ -176,9 +172,8 @@ void Terreno::generateMesh(const std::vector<float>& heights)
         }
     }
 
-    // 3) Normales por vértice
-    for (auto& v : vertices)
-        v.normal = glm::vec3(0.0f);
+    // Normales
+    for (auto& v : vertices) v.normal = glm::vec3(0.0f);
 
     for (size_t i = 0; i < indices.size(); i += 3)
     {
@@ -197,10 +192,9 @@ void Terreno::generateMesh(const std::vector<float>& heights)
         vertices[ic].normal += n;
     }
 
-    for (auto& v : vertices)
-        v.normal = glm::normalize(v.normal);
+    for (auto& v : vertices) v.normal = glm::normalize(v.normal);
 
-    // 4) OpenGL buffers
+    // OpenGL buffers
     if (VAO) glDeleteVertexArrays(1, &VAO);
     if (VBO) glDeleteBuffers(1, &VBO);
     if (EBO) glDeleteBuffers(1, &EBO);
@@ -210,17 +204,11 @@ void Terreno::generateMesh(const std::vector<float>& heights)
 
     glGenBuffers(1, &VBO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER,
-        vertices.size() * sizeof(TerrenoVertex),
-        vertices.data(),
-        GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(TerrenoVertex), vertices.data(), GL_STATIC_DRAW);
 
     glGenBuffers(1, &EBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-        indices.size() * sizeof(unsigned int),
-        indices.data(),
-        GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(TerrenoVertex), (void*)offsetof(TerrenoVertex, pos));
     glEnableVertexAttribArray(0);
@@ -236,15 +224,14 @@ void Terreno::generateMesh(const std::vector<float>& heights)
     numIndices = (GLsizei)indices.size();
 }
 
-
-// Altura en mundo para colocar árboles y las rocas encima del terreno
-
+// ------------------------------------------------------------
+// Altura en mundo (para pegar árboles/rocas al suelo)
+// ------------------------------------------------------------
 float Terreno::GetHeightWorld(float worldX, float worldZ) const
 {
     if (heightsHM.empty() || widthHM <= 1 || heightHM <= 1)
         return 0.0f;
 
-    // mundo -> grid
     float gx = worldX / scaleXZ;
     float gz = worldZ / scaleXZ;
 
@@ -259,27 +246,48 @@ float Terreno::GetHeightWorld(float worldX, float worldZ) const
     float tx = gx - x0;
     float tz = gz - z0;
 
-    auto H = [&](int x, int z) {
-        return heightsHM[z * widthHM + x]; 
+    auto H01 = [&](int x, int z) {
+        return heightsHM[z * widthHM + x]; // 0..1 (ya con isla+gamma)
         };
 
-    float h00 = H(x0, z0);
-    float h10 = H(x1, z0);
-    float h01 = H(x0, z1);
-    float h11 = H(x1, z1);
+    float h00 = H01(x0, z0);
+    float h10 = H01(x1, z0);
+    float h01 = H01(x0, z1);
+    float h11 = H01(x1, z1);
 
     float h0 = h00 * (1 - tx) + h10 * tx;
     float h1 = h01 * (1 - tx) + h11 * tx;
-
     float h = h0 * (1 - tz) + h1 * tz;
 
-    // mundo
     return h * scaleY;
 }
 
+// ------------------------------------------------------------
+// Normal en mundo (para inclinar árboles/rocas)
+// ------------------------------------------------------------
+glm::vec3 Terreno::GetNormalWorld(float worldX, float worldZ) const
+{
+    // paso en mundo
+    float e = scaleXZ;
+    if (e <= 0.0f) e = 1.0f;
 
-// Crear shader terrain.vs + terreno.fs
+    float hL = GetHeightWorld(worldX - e, worldZ);
+    float hR = GetHeightWorld(worldX + e, worldZ);
+    float hD = GetHeightWorld(worldX, worldZ - e);
+    float hU = GetHeightWorld(worldX, worldZ + e);
 
+    glm::vec3 dx(2.0f * e, hR - hL, 0.0f);
+    glm::vec3 dz(0.0f, hU - hD, 2.0f * e);
+
+    glm::vec3 n = glm::normalize(glm::cross(dz, dx));
+    if (n.y < 0.0f) n = -n;
+
+    return n;
+}
+
+// ------------------------------------------------------------
+// Shader terreno
+// ------------------------------------------------------------
 bool Terreno::createShader()
 {
     std::string vsCode = LoadTextFile("../shaders/terrain.vs");
@@ -320,9 +328,9 @@ bool Terreno::createShader()
     return true;
 }
 
-
-// Texturas grass y rock lo del pdf
-
+// ------------------------------------------------------------
+// Texturas
+// ------------------------------------------------------------
 bool Terreno::loadTextures(const std::string& grassPath, const std::string& rockPath)
 {
     stbi_set_flip_vertically_on_load(true);
@@ -349,7 +357,7 @@ bool Terreno::loadTextures(const std::string& grassPath, const std::string& rock
     glGenerateMipmap(GL_TEXTURE_2D);
     stbi_image_free(data);
 
-    // Rock del obj 
+    // Rock
     data = stbi_load(rockPath.c_str(), &w, &h, &ch, 0);
     if (!data)
     {
@@ -372,31 +380,51 @@ bool Terreno::loadTextures(const std::string& grassPath, const std::string& rock
     return true;
 }
 
-
+// ------------------------------------------------------------
 // Draw
-
+// ------------------------------------------------------------
 void Terreno::Draw(const Camara& camara, float aspectRatio)
 {
     glUseProgram(shaderProgram);
     glBindVertexArray(VAO);
+
+    auto U = [&](const char* n) { return glGetUniformLocation(shaderProgram, n); };
+
+    std::cout
+        << "uRockStartHeight=" << U("uRockStartHeight") << " "
+        << "uRockEndHeight=" << U("uRockEndHeight") << " "
+        << "uSlopeStart=" << U("uSlopeStart") << " "
+        << "uSlopeEnd=" << U("uSlopeEnd") << "\n";
 
     glm::mat4 model = glm::mat4(1.0f);
     glm::mat4 view = camara.GetViewMatrix();
     glm::mat4 proj = camara.GetProjectionMatrix(aspectRatio);
     glm::mat4 mvp = proj * view * model;
 
-	//niebla y para la poscion de la camara
     glm::vec3 camPos = camara.GetPosition();
 
     GLint locMVP = glGetUniformLocation(shaderProgram, "uMVP");
     GLint locModel = glGetUniformLocation(shaderProgram, "uModel");
     GLint locView = glGetUniformLocation(shaderProgram, "uView");
     GLint locProj = glGetUniformLocation(shaderProgram, "uProj");
+    GLint locCam = glGetUniformLocation(shaderProgram, "uCameraPos");
 
     if (locMVP != -1) glUniformMatrix4fv(locMVP, 1, GL_FALSE, glm::value_ptr(mvp));
     if (locModel != -1) glUniformMatrix4fv(locModel, 1, GL_FALSE, glm::value_ptr(model));
     if (locView != -1) glUniformMatrix4fv(locView, 1, GL_FALSE, glm::value_ptr(view));
     if (locProj != -1) glUniformMatrix4fv(locProj, 1, GL_FALSE, glm::value_ptr(proj));
+    if (locCam != -1) glUniform3fv(locCam, 1, glm::value_ptr(camPos));
+
+    // Ajusta estos valores a tu gusto:
+    glUniform1f(glGetUniformLocation(shaderProgram, "uRockStartHeight"), 20.0f);
+    glUniform1f(glGetUniformLocation(shaderProgram, "uRockEndHeight"), 40.0f);
+
+    // Pendiente: esto va en “dot(up)”:
+    // 1.0 = plano, 0.0 = vertical.
+    // Empieza roca cuando baja de 0.85, y ya es roca sobre 0.60 por ejemplo.
+    glUniform1f(glGetUniformLocation(shaderProgram, "uSlopeStart"), 0.5f);
+    glUniform1f(glGetUniformLocation(shaderProgram, "uSlopeEnd"), 0.4f);
+
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texGrass);
@@ -406,14 +434,12 @@ void Terreno::Draw(const Camara& camara, float aspectRatio)
 
     glDrawElements(GL_TRIANGLES, numIndices, GL_UNSIGNED_INT, 0);
 
-	//niebla y posicion de la camara
-    glUniform3fv(glGetUniformLocation(shaderProgram, "uCameraPos"), 1, &camPos[0]);
     glBindVertexArray(0);
 }
 
-
+// ------------------------------------------------------------
 // Cleanup
-
+// ------------------------------------------------------------
 void Terreno::Cleanup()
 {
     if (EBO) glDeleteBuffers(1, &EBO);
@@ -427,3 +453,4 @@ void Terreno::Cleanup()
     texGrass = texRock = 0;
     shaderProgram = 0;
 }
+

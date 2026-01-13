@@ -8,18 +8,18 @@ class Camara;
 class Agua
 {
 public:
-    // Inicializa shader + textura + malla
+    
     bool Init(const std::string& waterTexPath);
 
     // Parámetros
-    void SetSize(float s);              // tamaño X/Z
-    void SetCenter(float x, float z);   // centro en X/Z
-    void SetWaterY(float y);            // altura base del agua
+    void SetSize(float s);              
+    void SetCenter(float x, float z);   
+    void SetWaterY(float y);            
 
-    // Olas simples (si no hay marea)
+    // Olas simples 
     void SetWave(float amplitude, float speed);
 
-    // Marea (sube/baja tipo mar)
+    // Marea 
     void SetTide(bool enabled, float amplitude, float speed);
 
     // Update y Draw
@@ -29,17 +29,17 @@ public:
     void Cleanup();
 
 private:
-    // Shader helpers
+    
     std::string loadTextFile(const std::string& path);
     GLuint compileShader(GLenum type, const std::string& src);
     GLuint createProgram(const std::string& vsSrc, const std::string& fsSrc);
     bool createShader();
 
-    // Texture
+    
     GLuint loadTexture(const std::string& path);
 
 private:
-    // OpenGL resources
+  
     GLuint VAO = 0;
     GLuint VBO = 0;
     GLuint EBO = 0;

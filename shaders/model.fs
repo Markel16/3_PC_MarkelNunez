@@ -1,23 +1,30 @@
-#version 330 core
-
-in vec3 vN;
+﻿in vec3 vN;
 in vec2 vUV;
 
 out vec4 FragColor;
 
-uniform int uHasTex;
-uniform sampler2D uTex0;
+uniform int uHasTex;        
+uniform sampler2D uTex;     
+
+uniform int uAlphaCutout;      
+uniform float uAlphaThreshold;
 
 void main()
 {
-    // luz simple para que no sea todo blanco plano
+
     vec3 N = normalize(vN);
     float l = max(dot(N, normalize(vec3(0.3, 1.0, 0.2))), 0.2);
 
-    vec3 base = vec3(0.7, 0.7, 0.7);
+   
+    vec4 texC = vec4(0.7, 0.7, 0.7, 1.0);
 
     if (uHasTex == 1)
-        base = texture(uTex0, vUV).rgb;
+        texC = texture(uTex, vUV);
 
-    FragColor = vec4(base * l, 1.0);
+   
+    if (uAlphaCutout == 1 && texC.a < uAlphaThreshold)
+        discard;
+
+   
+    FragColor = vec4(texC.rgb * l, 1.0);
 }
