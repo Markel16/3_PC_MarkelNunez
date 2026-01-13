@@ -437,9 +437,7 @@ void Terreno::Draw(const Camara& camara, float aspectRatio)
     glBindVertexArray(0);
 }
 
-// ------------------------------------------------------------
-// Cleanup
-// ------------------------------------------------------------
+
 void Terreno::Cleanup()
 {
     if (EBO) glDeleteBuffers(1, &EBO);
